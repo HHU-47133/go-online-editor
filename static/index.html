@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Go Online Editor</title>
+	<style>
+		body {
+			font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+			display: flex;
+			height: 100vh;
+			margin: 0;
+			background: #1e1e1e;
+			color: #d4d4d4;
+			overflow: hidden;
+		}
+
+		/* 全局拖拽状态：防止 Monaco Editor 吞噬鼠标事件，强制鼠标样式 */
+		body.is-resizing * {
+			pointer-events: none !important;
+			user-select: none !important;
+		}
+
+		body.is-resizing {
+			cursor: col-resize !important;
+		}
+
+		/* ================== 左侧模板栏样式 ================== */
+		.sidebar {
+			width: 250px;
+			background: #1e1e1e;
+			border-right: 1px solid #333;
+			display: flex;
+			flex-direction: column;
+			transition: width 0.3s ease;
+			overflow: hidden;
+			flex-shrink: 0;
+		}
+
+		.sidebar.collapsed {
+			width: 0 !important;
+			border-right: none;
+		}
+
+		.sidebar-header {
+			padding: 10px;
+			background: #252526;
+			font-weight: bold;
+			border-bottom: 1px solid #333;
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			white-space: nowrap;
+			height: 22px;
+		}
+
+		.tree-container {
+			flex: 1;
+			overflow-y: auto;
+			padding: 10px;
+			font-size: 14px;
+			white-space: nowrap;
+		}
+
+		.tree-folder,
+		.tree-file {
+			cursor: pointer;
+			padding: 4px 0;
+			user-select: none;
+		}
+
+		.tree-folder::before {
+			content: '📁 ';
+		}
+
+		.tree-file::before {
+			content: '📄 ';
+		}
+
+		.tree-folder {
+			color: #dcdcaa;
+		}
+
+		.tree-file {
+			color: #dcdcaa;
+		}
+
+		.tree-file:hover,
+		.tree-folder:hover {
+			color: #fff;
+		}
+
+		.tree-children {
+			padding-left: 18px;
+			display: none;
+		}
+
+		.tree-children.expanded {
+			display: block;
+		}
+
+		/* 通用拖拽条样式 */
+		.resizer {
+			width: 6px;
+			background-color: #333;
+			cursor: col-resize;
+			transition: background-color 0.2s;
+			flex-shrink: 0;
+			z-index: 10;
+		}
+
+		.resizer:hover,
+		.resizer:active {
+			background-color: #0e639c;
+		}
+
+		/* 独立模板代码预览面板样式 */
+		.template-code-panel {
+			width: 450px;
+			background: #1e1e1e;
+			border-right: 1px solid #333;
+			display: flex;
+			flex-direction: column;
+			transition: width 0.3s ease;
+			overflow: hidden;
+			flex-shrink: 0;
+		}
+
+		.template-code-panel.collapsed {
+			width: 0 !important;
+			border-right: none;
+		}
+
+		.code-panel-header {
+			padding: 10px;
+			background: #252526;
+			border-bottom: 1px solid #333;
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			white-space: nowrap;
+			height: 22px;
+			color: #dcdcaa;
+			font-weight: bold;
+		}
+
+		.code-content {
+			flex: 1;
+			margin: 10px;
+			border: 1px solid #444;
+			border-radius: 4px;
+			overflow: hidden;
+		}
+
+		.header-actions {
+			display: flex;
+			gap: 5px;
+		}
+
+		/* ================== 主界面及右侧面板样式 ================== */
+
+		/* 核心修改：让主编辑器自动吸附剩余空间，不要定死宽度 */
+		.left-panel {
+			flex: 1;
+			display: flex;
+			flex-direction: column;
+			min-width: 300px;
+			/* 防止被挤压到无法打字 */
+		}
+
+		/* 核心修改：赋予右侧面板确定的宽度，方便做动画和拖拽计算 */
+		.right-panel {
+			width: 400px;
+			display: flex;
+			flex-direction: column;
+			transition: width 0.3s ease;
+			overflow: hidden;
+			flex-shrink: 0;
+			background: #1e1e1e;
+		}
+
+		.right-panel.collapsed {
+			width: 0 !important;
+		}
+
+		.header {
+			padding: 10px;
+			background: #252526;
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			border-bottom: 1px solid #333;
+			height: 22px;
+		}
+
+		.btn-outline {
+			background: transparent;
+			border: 1px solid #555;
+			color: #ccc;
+			padding: 4px 8px;
+			border-radius: 3px;
+			cursor: pointer;
+		}
+
+		.btn-outline:hover {
+			background: #333;
+			color: #fff;
+		}
+
+		.close-icon {
+			cursor: pointer;
+			color: #888;
+			font-size: 14px;
+		}
+
+		.close-icon:hover {
+			color: #fff;
+		}
+
+		#editor-container {
+			flex: 1;
+			width: 100%;
+		}
+
+		#vim-status {
+			background: #007acc;
+			color: white;
+			font-family: 'Consolas', 'Courier New', monospace;
+			font-size: 14px;
+			padding: 2px 10px;
+			height: 24px;
+			display: flex;
+			align-items: center;
+		}
+
+		.io-box {
+			flex: 1;
+			display: flex;
+			flex-direction: column;
+			border-bottom: 1px solid #333;
+		}
+
+		.io-header {
+			padding: 8px 10px;
+			background: #2d2d30;
+			font-size: 14px;
+			color: #9cdcfe;
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+		}
+
+		textarea {
+			flex: 1;
+			background: #1e1e1e;
+			color: #d4d4d4;
+			border: none;
+			padding: 15px;
+			font-family: 'Consolas', 'Courier New', Courier, monospace;
+			font-size: 16px;
+			resize: none;
+			outline: none;
+		}
+
+		button.run-btn {
+			background: #0e639c;
+			color: white;
+			border: none;
+			padding: 6px 16px;
+			cursor: pointer;
+			border-radius: 4px;
+			font-size: 14px;
+		}
+
+		button.run-btn:hover {
+			background: #1177bb;
+		}
+
+		button.run-btn:disabled {
+			background: #555;
+			cursor: not-allowed;
+		}
+
+		#output {
+			color: #ce9178;
+		}
+
+		#error {
+			color: #f48771;
+			display: none;
+		}
+	</style>
+</head>
+
+<body>
+
+	<div class="sidebar collapsed" id="sidebar">
+		<div class="sidebar-header">
+			<span>📚 算法模板库</span>
+			<button class="btn-outline" onclick="toggleSidebar()" style="padding: 2px 6px;">✕</button>
+		</div>
+		<div class="tree-container" id="tree-container">加载中...</div>
+	</div>
+	<div class="resizer" id="sidebarResizer" style="display: none;"></div>
+
+	<div class="template-code-panel collapsed" id="templateCodePanel">
+		<div class="code-panel-header">
+			<span id="codePanelTitle">Code Preview</span>
+			<div class="header-actions">
+				<button class="btn-outline" id="insertBtn" title="Insert at cursor">↲ 插入</button>
+				<button class="btn-outline" id="copyBtn" title="Copy to clipboard">📋 复制</button>
+				<button class="btn-outline" onclick="closeCodePanel()" style="padding: 2px 6px;">✕</button>
+			</div>
+		</div>
+		<div class="code-content" id="codeContent"></div>
+	</div>
+	<div class="resizer" id="codePanelResizer" style="display: none;"></div>
+
+	<div class="left-panel" id="leftPanel">
+		<div class="header">
+			<div style="display: flex; align-items: center; gap: 15px;">
+				<button class="btn-outline" onclick="toggleSidebar()">☰ 模板</button>
+				<span>Golang Editor (Vim Mode)</span>
+			</div>
+			<div style="display: flex; align-items: center; gap: 10px;">
+				<button class="btn-outline" onclick="toggleRightPanel()">☰ 样例</button>
+				<button class="btn-outline" id="copyAllBtn" onclick="copyAllCode()">📋 复制全部</button>
+				<button id="stopBtn"
+					style="display:none; background:#d9534f; color:white; border:none; padding:6px 16px; cursor:pointer; border-radius:4px;"
+					onclick="stopCode()">Stop</button>
+				<button class="run-btn" id="runBtn" onclick="runCode()">Run (Ctrl+Enter)</button>
+			</div>
+		</div>
+		<div id="editor-container"></div>
+		<div id="vim-status"></div>
+	</div>
+
+	<div class="resizer" id="dragMe"></div>
+
+	<div class="right-panel" id="rightPanel">
+		<div class="io-box">
+			<div class="io-header">
+				<span>Standard Input (样例输入)</span>
+				<span class="close-icon" title="关闭面板" onclick="toggleRightPanel()">✕</span>
+			</div>
+			<textarea id="input" placeholder="在此输入你的测试样例..."></textarea>
+		</div>
+		<div class="io-box">
+			<div class="io-header">
+				<span>Standard Output (运行结果)</span>
+			</div>
+			<textarea id="output" readonly placeholder="输出结果将在这里显示..."></textarea>
+			<textarea id="error" readonly></textarea>
+		</div>
+	</div>
+
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.38.0/min/vs/loader.min.js"></script>
+	<script>
+		let editor;
+		let templateEditor = null;
+
+		require.config({
+			paths: {
+				'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.38.0/min/vs',
+				'monaco-vim': 'https://cdn.jsdelivr.net/npm/monaco-vim@0.4.1/dist/monaco-vim'
+			}
+		});
+
+		require(['vs/editor/editor.main'], async function () {
+			let defaultCode = "";
+			try {
+				const response = await fetch('/default.tpl');
+				defaultCode = await response.text();
+			} catch (e) {
+				defaultCode = "";
+			}
+
+			editor = monaco.editor.create(document.getElementById('editor-container'), {
+				value: defaultCode,
+				language: 'go',
+				theme: 'vs-dark',
+				automaticLayout: true,
+				fontSize: 16,
+				tabSize: 4,
+				minimap: { enabled: false }
+			});
+
+			require(['monaco-vim'], function (MonacoVim) {
+				if (MonacoVim) {
+					const statusNode = document.getElementById('vim-status');
+					const vimMode = MonacoVim.initVimMode(editor, statusNode);
+					MonacoVim.VimMode.Vim.defineEx('write', 'w', function () { runCode(); });
+				}
+			});
+
+			editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, function () { runCode(); });
+		});
+
+		// ========= 平滑的拖拽工具函数 (左侧两栏用) =========
+		function initLeftResizer(resizerId, panelId) {
+			const resizer = document.getElementById(resizerId);
+			const panel = document.getElementById(panelId);
+			let x = 0;
+			let initialWidth = 0;
+
+			const mouseDownHandler = function (e) {
+				if (e.button !== 0) return;
+				x = e.clientX;
+				initialWidth = panel.getBoundingClientRect().width;
+
+				panel.style.transition = 'none';
+				document.body.classList.add('is-resizing');
+
+				document.addEventListener('mousemove', mouseMoveHandler);
+				document.addEventListener('mouseup', mouseUpHandler);
+			};
+
+			const mouseMoveHandler = function (e) {
+				const dx = e.clientX - x;
+				let newWidth = initialWidth + dx;
+				if (newWidth < 150) newWidth = 150;
+				if (newWidth > window.innerWidth * 0.4) newWidth = window.innerWidth * 0.4;
+				panel.style.width = `${newWidth}px`;
+			};
+
+			const mouseUpHandler = function () {
+				panel.style.transition = '';
+				document.body.classList.remove('is-resizing');
+				document.removeEventListener('mousemove', mouseMoveHandler);
+				document.removeEventListener('mouseup', mouseUpHandler);
+			};
+
+			resizer.addEventListener('mousedown', mouseDownHandler);
+		}
+
+		initLeftResizer('sidebarResizer', 'sidebar');
+		initLeftResizer('codePanelResizer', 'templateCodePanel');
+
+		setTimeout(() => {
+			const model = editor.getModel();
+			const matches = model.findMatches('func solve()', false, false, false, null, false);
+			let targetLine = model.getLineCount();
+			let targetColumn = 1;
+
+			if (matches && matches.length > 0) {
+				targetLine = matches[0].range.startLineNumber + 2;
+				targetColumn = 5;
+			}
+
+			editor.revealLineInCenter(targetLine);
+			editor.setPosition({ lineNumber: targetLine, column: targetColumn });
+			editor.focus();
+		}, 200);
+
+		// ========= 【重构】右侧面板拖拽 =========
+		// 核心思路：通过调整右侧面板的 width，让主编辑器 (flex: 1) 自动填满剩余空间，避免修改主编辑器带来的生硬感。
+		const dragMe = document.getElementById('dragMe');
+		const rightPanel = document.getElementById('rightPanel');
+		let mainX = 0;
+		let rightPanelInitialWidth = 0;
+
+		const mainMouseDownHandler = function (e) {
+			if (e.button !== 0) return;
+			mainX = e.clientX;
+			rightPanelInitialWidth = rightPanel.getBoundingClientRect().width;
+
+			rightPanel.style.transition = 'none';
+			document.body.classList.add('is-resizing');
+
+			document.addEventListener('mousemove', mainMouseMoveHandler);
+			document.addEventListener('mouseup', mainMouseUpHandler);
+		};
+
+		const mainMouseMoveHandler = function (e) {
+			const dx = e.clientX - mainX;
+			// 往左滑 (dx < 0)，右侧面板宽度增加；往右滑 (dx > 0)，右侧面板宽度减小
+			let newRightWidth = rightPanelInitialWidth - dx;
+
+			if (newRightWidth < 200) newRightWidth = 200;
+			const maxRightWidth = document.body.clientWidth - 300; // 给编辑器留最少300px
+			if (newRightWidth > maxRightWidth) newRightWidth = maxRightWidth;
+
+			rightPanel.style.width = `${newRightWidth}px`;
+		};
+
+		const mainMouseUpHandler = function () {
+			rightPanel.style.transition = '';
+			document.body.classList.remove('is-resizing');
+			document.removeEventListener('mousemove', mainMouseMoveHandler);
+			document.removeEventListener('mouseup', mainMouseUpHandler);
+		};
+
+		dragMe.addEventListener('mousedown', mainMouseDownHandler);
+
+		// ========= 面板开关逻辑 =========
+		function toggleSidebar() {
+			const sidebar = document.getElementById('sidebar');
+			const sidebarResizer = document.getElementById('sidebarResizer');
+			sidebar.classList.toggle('collapsed');
+
+			sidebarResizer.style.display = sidebar.classList.contains('collapsed') ? 'none' : 'block';
+
+			if (!sidebar.classList.contains('collapsed') && document.getElementById('tree-container').innerHTML === '加载中...') {
+				loadTemplates();
+			}
+		}
+
+		// 【新增】右侧面板的折叠逻辑
+		function toggleRightPanel() {
+			const rp = document.getElementById('rightPanel');
+			const resizer = document.getElementById('dragMe');
+			rp.classList.toggle('collapsed');
+			resizer.style.display = rp.classList.contains('collapsed') ? 'none' : 'block';
+		}
+
+		// ========= 模板读取与预览逻辑 =========
+		async function openCodePanel(nodeName, nodePath) {
+			const codePanel = document.getElementById('templateCodePanel');
+			const titleEl = document.getElementById('codePanelTitle');
+			const insertBtn = document.getElementById('insertBtn');
+			const copyBtn = document.getElementById('copyBtn');
+
+			titleEl.innerText = nodeName.replace(".go", "");
+
+			codePanel.classList.remove('collapsed');
+			document.getElementById('codePanelResizer').style.display = 'block';
+
+			if (!templateEditor) {
+				templateEditor = monaco.editor.create(document.getElementById('codeContent'), {
+					value: "// 加载中...",
+					language: 'go',
+					theme: 'vs-dark',
+					readOnly: true,
+					automaticLayout: true,
+					minimap: { enabled: false },
+					fontSize: 14,
+					scrollBeyondLastLine: false
+				});
+			} else {
+				templateEditor.setValue("// 加载中...");
+			}
+
+			try {
+				const res = await fetch(`/api/template/content?path=${encodeURIComponent(nodePath)}`);
+				const code = await res.text();
+
+				const lang = nodeName.endsWith('.md') ? 'markdown' : 'go';
+				monaco.editor.setModelLanguage(templateEditor.getModel(), lang);
+
+				templateEditor.setValue(code.trim());
+
+				insertBtn.onclick = () => insertTemplateToEditor(code);
+				copyBtn.onclick = () => {
+					navigator.clipboard.writeText(code);
+					copyBtn.innerText = '✅ 已复制';
+					setTimeout(() => copyBtn.innerText = '📋 复制', 2000);
+				};
+			} catch (e) {
+				templateEditor.setValue("// 读取失败");
+			}
+		}
+
+		function closeCodePanel() {
+			const codePanel = document.getElementById('templateCodePanel');
+			codePanel.classList.add('collapsed');
+			document.getElementById('codePanelResizer').style.display = 'none';
+		}
+
+		async function loadTemplates() {
+			try {
+				const res = await fetch('/api/templates');
+				const treeData = await res.json();
+				const container = document.getElementById('tree-container');
+				container.innerHTML = '';
+
+				if (treeData && treeData.children) {
+					treeData.children.forEach(child => {
+						container.appendChild(createTreeNode(child));
+					});
+				}
+			} catch (e) {
+				document.getElementById('tree-container').innerHTML = '<span style="color:#f48771">加载模板失败...</span>';
+			}
+		}
+
+		function createTreeNode(node) {
+			const div = document.createElement('div');
+			const title = document.createElement('div');
+			title.innerText = node.name.replace(".go", "");
+			title.className = node.isDir ? 'tree-folder' : 'tree-file';
+			div.appendChild(title);
+
+			if (node.isDir) {
+				const childrenContainer = document.createElement('div');
+				childrenContainer.className = 'tree-children';
+				if (node.children) {
+					node.children.forEach(child => {
+						childrenContainer.appendChild(createTreeNode(child));
+					});
+				}
+				div.appendChild(childrenContainer);
+				title.onclick = () => childrenContainer.classList.toggle('expanded');
+			} else {
+				title.onclick = () => openCodePanel(node.name, node.path);
+			}
+			return div;
+		}
+
+		function insertTemplateToEditor(code) {
+			if (!editor) return;
+			const position = editor.getPosition();
+			editor.executeEdits("template-insert", [{
+				range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column),
+				text: code.trim() + "\n",
+				forceMoveMarkers: true
+			}]);
+			editor.focus();
+		}
+
+		// ========= 运行代码逻辑 =========
+		document.addEventListener('keydown', function (e) {
+			if (e.ctrlKey && e.key === 'Enter') runCode();
+		});
+
+		let currentTaskId = null; // 用于追踪当前任务
+
+		async function runCode() {
+			if (!editor) return;
+			const runBtn = document.getElementById('runBtn');
+			const stopBtn = document.getElementById('stopBtn');
+			const outputEl = document.getElementById('output');
+			const errorEl = document.getElementById('error');
+
+			// 生成唯一任务 ID
+			currentTaskId = 'task-' + Date.now();
+
+			const code = editor.getValue();
+			const input = document.getElementById('input').value;
+
+			// UI 状态切换
+			runBtn.disabled = true;
+			runBtn.innerText = "Running...";
+			stopBtn.style.display = 'inline-block';
+			outputEl.value = "程序正在运行...";
+			outputEl.style.display = 'block';
+			errorEl.style.display = 'none';
+
+			try {
+				const response = await fetch('/api/run', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						code,
+						input,
+						taskId: currentTaskId
+					})
+				});
+				const result = await response.json();
+
+				if (result.error) {
+					outputEl.style.display = 'none';
+					errorEl.style.display = 'block';
+					errorEl.value = result.error;
+				} else {
+					outputEl.value = result.output || "（程序没有输出）";
+				}
+			} catch (err) {
+				// 如果是因为主动取消导致的 fetch 异常（如连接断开），在这里处理
+				if (err.name !== 'AbortError') {
+					errorEl.style.display = 'block';
+					errorEl.value = "请求失败: " + err.message;
+				}
+			} finally {
+				runBtn.disabled = false;
+				runBtn.innerText = "Run (Ctrl+Enter)";
+				stopBtn.style.display = 'none';
+				currentTaskId = null;
+			}
+		}
+
+		async function stopCode() {
+			if (!currentTaskId) return;
+			try {
+				await fetch(`/api/stop?taskId=${currentTaskId}`);
+				document.getElementById('output').value = "正在发送停止指令...";
+			} catch (err) {
+				console.error("停止请求失败", err);
+			}
+		}
+
+		async function copyAllCode() {
+			const code = editor.getValue();
+			const btn = document.getElementById('copyAllBtn');
+
+			try {
+				// 尝试使用现代 API
+				if (navigator.clipboard && window.isSecureContext) {
+					await navigator.clipboard.writeText(code);
+				} else {
+					throw "Use fallback";
+				}
+			} catch (err) {
+				// 兼容性降级方案：使用隐藏文本域
+				const ta = document.createElement("textarea");
+				ta.value = code;
+				ta.style.position = "absolute";
+				ta.style.left = "-9999px";
+				document.body.appendChild(ta);
+				ta.select();
+				document.execCommand('copy');
+				document.body.removeChild(ta);
+			}
+
+			// 简化的 UI 反馈
+			const originalText = btn.innerText;
+			btn.innerText = "✅ 已复制";
+			setTimeout(() => btn.innerText = originalText, 2000);
+		}
+	</script>
+</body>
+
+</html>

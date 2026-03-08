@@ -1,0 +1,16 @@
+services:
+  go-editor:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: go-online-editor
+    ports:
+      - "2009:2009"
+    restart: always
+    environment:
+      - TZ=Asia/Shanghai
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          memory: 512M
