@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -114,8 +116,12 @@ func runCodeHandler(w http.ResponseWriter, r *http.Request) {
 	case <-ctx.Done():
 		// 【清理逻辑】只要上下文结束（手动停止、连接断开、超时），就杀掉整个进程组
 		if cmd.Process != nil {
-			// 发送信号给负的 PID，杀掉整个进程组
-			syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			if runtime.GOOS == "windows" {
+				exec.Command("taskkill", "/F", "/T", "/PID", strconv.Itoa(cmd.Process.Pid)).Run()
+			} else {
+				// 发送信号给负的 PID，杀掉整个进程组
+				syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			}
 		}
 
 		// 如果是因为连接断开导致的取消，无需返回数据给已经关闭的连接
