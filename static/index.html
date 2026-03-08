@@ -551,8 +551,8 @@
 				templateEditor.setValue(code.trim());
 
 				insertBtn.onclick = () => insertTemplateToEditor(code);
-				copyBtn.onclick = () => {
-					navigator.clipboard.writeText(code);
+				copyBtn.onclick = async () => {
+					await copyTextToClipboard(code);
 					copyBtn.innerText = '✅ 已复制';
 					setTimeout(() => copyBtn.innerText = '📋 复制', 2000);
 				};
@@ -689,21 +689,18 @@
 			}
 		}
 
-		async function copyAllCode() {
-			const code = editor.getValue();
-			const btn = document.getElementById('copyAllBtn');
-
+		async function copyTextToClipboard(text) {
 			try {
 				// 尝试使用现代 API
 				if (navigator.clipboard && window.isSecureContext) {
-					await navigator.clipboard.writeText(code);
+					await navigator.clipboard.writeText(text);
 				} else {
 					throw "Use fallback";
 				}
 			} catch (err) {
 				// 兼容性降级方案：使用隐藏文本域
 				const ta = document.createElement("textarea");
-				ta.value = code;
+				ta.value = text;
 				ta.style.position = "absolute";
 				ta.style.left = "-9999px";
 				document.body.appendChild(ta);
@@ -711,8 +708,16 @@
 				document.execCommand('copy');
 				document.body.removeChild(ta);
 			}
+		}
 
-			// 简化的 UI 反馈
+		async function copyAllCode() {
+			const code = editor.getValue();
+			const btn = document.getElementById('copyAllBtn');
+
+			// 调用封装好的通用复制函数
+			await copyTextToClipboard(code);
+
+			// UI 反馈
 			const originalText = btn.innerText;
 			btn.innerText = "✅ 已复制";
 			setTimeout(() => btn.innerText = originalText, 2000);
