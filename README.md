@@ -60,11 +60,13 @@ docker compose up --build -d
 
 **方式二：本地运行**
 
-1. 环境要求：`Go 1.25+`
+- 环境要求：`Go 1.25+`
 
-2. 准备工作：`git submodule update --init --recursive`
-
-3. 启动：`go run main.go`
+```bash
+git submodule update --init --remote --recursive
+go mod tidy
+go run main.go
+```
 
 ## 🔒 安全说明
 
