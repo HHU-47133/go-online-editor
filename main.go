@@ -9,11 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
-	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -93,7 +90,6 @@ func runCodeHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 4. 运行阶段
 	cmd := exec.CommandContext(ctx, binPath)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // 必须设置进程组，否则杀不死子进程
 
 	if req.Input != "" {
 		cmd.Stdin = strings.NewReader(req.Input)
@@ -116,12 +112,7 @@ func runCodeHandler(w http.ResponseWriter, r *http.Request) {
 	case <-ctx.Done():
 		// 【清理逻辑】只要上下文结束（手动停止、连接断开、超时），就杀掉整个进程组
 		if cmd.Process != nil {
-			if runtime.GOOS == "windows" {
-				exec.Command("taskkill", "/F", "/T", "/PID", strconv.Itoa(cmd.Process.Pid)).Run()
-			} else {
-				// 发送信号给负的 PID，杀掉整个进程组
-				syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-			}
+			cmd.Process.Kill()
 		}
 
 		// 如果是因为连接断开导致的取消，无需返回数据给已经关闭的连接
