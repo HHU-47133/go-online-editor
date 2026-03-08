@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"go/format"
 	"log"
 	"net/http"
 	"os"
@@ -215,6 +216,44 @@ func stopCodeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// 格式化请求体
+type FormatRequest struct {
+	Code string `json:"code"`
+}
+
+// 格式化响应体
+type FormatResponse struct {
+	Code  string `json:"code"`
+	Error string `json:"error"`
+}
+
+// 代码格式化处理函数
+func formatCodeHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req FormatRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	// 调用 Go 标准库进行格式化
+	formatted, err := format.Source([]byte(req.Code))
+	var resp FormatResponse
+
+	if err != nil {
+		resp.Error = err.Error()
+	} else {
+		resp.Code = string(formatted)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
 func main() {
 	// 静态文件服务
 	fs := http.FileServer(http.Dir("./static"))
@@ -222,7 +261,8 @@ func main() {
 
 	// API 路由
 	http.HandleFunc("/api/run", runCodeHandler)
-	http.HandleFunc("/api/stop", stopCodeHandler) // 新增停止接口
+	http.HandleFunc("/api/stop", stopCodeHandler)
+	http.HandleFunc("/api/format", formatCodeHandler)
 	http.HandleFunc("/api/templates", getTemplatesHandler)
 	http.HandleFunc("/api/template/content", getTemplateContentHandler)
 

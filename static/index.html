@@ -395,6 +395,7 @@
 			});
 
 			editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, function () { runCode(); });
+			editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, function () { formatCode(); });
 		});
 
 		// ========= 平滑的拖拽工具函数 (左侧两栏用) =========
@@ -621,12 +622,18 @@
 		// ========= 运行代码逻辑 =========
 		document.addEventListener('keydown', function (e) {
 			if (e.ctrlKey && e.key === 'Enter') runCode();
+
+			if (e.ctrlKey && e.key.toLowerCase() === 's') {
+				e.preventDefault();
+				formatCode();
+			}
 		});
 
 		let currentTaskId = null; // 用于追踪当前任务
 
 		async function runCode() {
 			if (!editor) return;
+
 			const runBtn = document.getElementById('runBtn');
 			const stopBtn = document.getElementById('stopBtn');
 			const outputEl = document.getElementById('output');
@@ -721,6 +728,34 @@
 			const originalText = btn.innerText;
 			btn.innerText = "✅ 已复制";
 			setTimeout(() => btn.innerText = originalText, 2000);
+		}
+
+		async function formatCode() {
+			if (!editor) return;
+			const code = editor.getValue();
+			try {
+				const response = await fetch('/api/format', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ code })
+				});
+				const result = await response.json();
+
+				// 仅在无语法错误、且代码确实发生了改变时，才去更新编辑器
+				if (!result.error && result.code && result.code !== code) {
+					const position = editor.getPosition(); // 记录当前光标位置
+
+					// 使用 executeEdits 替换代码，这种方式不会破坏用户的 Ctrl+Z 撤销历史
+					editor.executeEdits("format", [{
+						range: editor.getModel().getFullModelRange(),
+						text: result.code
+					}]);
+
+					editor.setPosition(position); // 恢复光标位置
+				}
+			} catch (err) {
+				console.error("格式化请求失败:", err);
+			}
 		}
 	</script>
 </body>
