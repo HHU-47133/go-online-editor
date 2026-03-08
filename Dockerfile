@@ -14,7 +14,7 @@ RUN go mod download
 COPY . .
 
 # 3. 处理 git 子模块（如果本地源码未包含，则在构建时同步）
-RUN if [ -d ".git" ]; then git submodule update --init --recursive; fi
+RUN if [ -d ".git" ]; then git submodule update --init --remote --recursive; fi
 
 # 4. 编译服务端程序
 # 编译后的二进制文件直接留在当前环境即可
