@@ -386,17 +386,47 @@
 				minimap: { enabled: false }
 			});
 
-			require(['monaco-vim'], function (MonacoVim) {
-				if (MonacoVim) {
-					const statusNode = document.getElementById('vim-status');
-					const vimMode = MonacoVim.initVimMode(editor, statusNode);
-					MonacoVim.VimMode.Vim.defineEx('write', 'w', function () { runCode(); });
-				}
+			// require(['monaco-vim'], function (MonacoVim) {
+			// 	if (MonacoVim) {
+			// 		const statusNode = document.getElementById('vim-status');
+			// 		const vimMode = MonacoVim.initVimMode(editor, statusNode);
+			// 		MonacoVim.VimMode.Vim.defineEx('write', 'w', function () { runCode(); });
+			// 	}
+			// });
+
+			const initVim = () => new Promise((resolve) => {
+				require(['monaco-vim'], function (MonacoVim) {
+					if (MonacoVim) {
+						const statusNode = document.getElementById('vim-status');
+						// 初始化 Vim 模式
+						const vimMode = MonacoVim.initVimMode(editor, statusNode);
+						MonacoVim.VimMode.Vim.defineEx('write', 'w', function () { runCode(); });
+					}
+					resolve(); // 确保 Vim 逻辑执行完再 resolve
+				});
 			});
+
+			setTimeout(() => {
+				const model = editor.getModel();
+				const matches = model.findMatches('func solve()', false, false, false, null, false);
+				let targetLine = model.getLineCount();
+				let targetColumn = 1;
+
+				if (matches && matches.length > 0) {
+					targetLine = matches[0].range.startLineNumber + 2;
+					targetColumn = 5;
+				}
+
+				editor.revealLineInCenter(targetLine);
+				editor.setPosition({ lineNumber: targetLine, column: targetColumn });
+				editor.focus();
+			}, 50);
 
 			editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, function () { runCode(); });
 			editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, function () { formatCode(); });
 		});
+
+
 
 		// ========= 平滑的拖拽工具函数 (左侧两栏用) =========
 		function initLeftResizer(resizerId, panelId) {
@@ -438,23 +468,6 @@
 		initLeftResizer('sidebarResizer', 'sidebar');
 		initLeftResizer('codePanelResizer', 'templateCodePanel');
 
-		setTimeout(() => {
-			const model = editor.getModel();
-			const matches = model.findMatches('func solve()', false, false, false, null, false);
-			let targetLine = model.getLineCount();
-			let targetColumn = 1;
-
-			if (matches && matches.length > 0) {
-				targetLine = matches[0].range.startLineNumber + 2;
-				targetColumn = 5;
-			}
-
-			editor.revealLineInCenter(targetLine);
-			editor.setPosition({ lineNumber: targetLine, column: targetColumn });
-			editor.focus();
-		}, 200);
-
-		// ========= 【重构】右侧面板拖拽 =========
 		// 核心思路：通过调整右侧面板的 width，让主编辑器 (flex: 1) 自动填满剩余空间，避免修改主编辑器带来的生硬感。
 		const dragMe = document.getElementById('dragMe');
 		const rightPanel = document.getElementById('rightPanel');
