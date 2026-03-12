@@ -386,24 +386,12 @@
 				minimap: { enabled: false }
 			});
 
-			// require(['monaco-vim'], function (MonacoVim) {
-			// 	if (MonacoVim) {
-			// 		const statusNode = document.getElementById('vim-status');
-			// 		const vimMode = MonacoVim.initVimMode(editor, statusNode);
-			// 		MonacoVim.VimMode.Vim.defineEx('write', 'w', function () { runCode(); });
-			// 	}
-			// });
-
-			const initVim = () => new Promise((resolve) => {
-				require(['monaco-vim'], function (MonacoVim) {
-					if (MonacoVim) {
-						const statusNode = document.getElementById('vim-status');
-						// 初始化 Vim 模式
-						const vimMode = MonacoVim.initVimMode(editor, statusNode);
-						MonacoVim.VimMode.Vim.defineEx('write', 'w', function () { runCode(); });
-					}
-					resolve(); // 确保 Vim 逻辑执行完再 resolve
-				});
+			require(['monaco-vim'], function (MonacoVim) {
+				if (MonacoVim) {
+					const statusNode = document.getElementById('vim-status');
+					const vimMode = MonacoVim.initVimMode(editor, statusNode);
+					MonacoVim.VimMode.Vim.defineEx('write', 'w', function () { runCode(); });
+				}
 			});
 
 			setTimeout(() => {
